@@ -71,7 +71,6 @@ This allows:
 
 
 ```
-
 Usage: pststream -f <file.pst> [MODE] [OPTIONS]
 
 Modes (choose one):  
@@ -91,20 +90,24 @@ Options:
 ### Examples
 
 ```bash
-# Dump all headers
-pststream -f mail.pst -H
+# Extract full info for a specific email
+$ pststream -f mail.pst -I -n 12345
+============================================================
+IPM.Contact
+NID: 2097796
+============================================================
+Subject    : Saqib Razzaq
+Sent       : 21-06-2011 23:53:13 UTC
+FromName   : Emm448
+From       : Emm448
+Received   : 21-06-2011 23:53:13 UTC
+Flags      : READ
+Folder     : Contacts
 
-# Dump full PST content
-pststream -f mail.pst -F
+--- PLAIN ---
 
-# Extract a specific email body
-pststream -f mail.pst -B -n 12345
+Hello! This is a test.
 
-# Extract full info for a node
-pststream -f mail.pst -I -n 12345
-
-# Get folder info
-pststream -f mail.pst -D -n 12345
 
 ```
 
@@ -115,8 +118,13 @@ pststream -f mail.pst -D -n 12345
 `pststream` is designed to work well with standard UNIX tools:
 
 ```bash
-pststream -f mail.pst -H | grep "Subject:"
-pststream -f mail.pst -F | grep -i "password"
+$ pststream -f mail.pst -H | grep "Subject.*:"
+Subject    : HTML body
+Subject    : Multiple attachments
+Subject    : this message contains embedded MSG
+Subject    : check sent date of this message
+Subject    : message 2
+Subject    : message 1
 
 ```
 

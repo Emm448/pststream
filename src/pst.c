@@ -226,8 +226,11 @@ void pst_print_email_header_handler(PstNbtLeaf *leaf, PstPcBthRecord *rec, uint1
 	
 	const char *label = NULL;
 
-    if (rec->wPropId == PR_MESSAGE_CLASS) {
-        printf("\n============================================================\n");
+	if (rec->wPropId == PR_IMPORTANCE){
+		printf("\n============================================================\n");
+		label = "Importance : ";
+	}
+    else if (rec->wPropId == PR_MESSAGE_CLASS) {
 		//ToDo, usare hash o cmpstr(const char* str, uint8_t *buff, bool isUTF16)
 		//if(strcmp((char*)buffer, hash("IPM.Note")) == 0) printf("BODY\n");
 		//if(strcmp((char*)buffer, hash("IPM.Appointment")) == 0) printf("APPOINTMENT\n");
@@ -238,6 +241,7 @@ void pst_print_email_header_handler(PstNbtLeaf *leaf, PstPcBthRecord *rec, uint1
     }
 
     switch(rec->wPropId) {
+		//case PR_IMPORTANCE:				label = "Importance : ";	break;
         case PR_SUBJECT:				label = "Subject    : ";	break;
 		case PR_CLIENT_SUBMIT_TIME:		label = "Sent       : ";	break;
         case PR_SENDER:					label = "From       : ";	break;
@@ -414,6 +418,111 @@ int pst_read_xblock_chain(FILE *fp, PstHeader *hdr, PstXblock *xb, uint8_t *out,
     return (int)off;
 }
 
+void pst_attachment_dump_cb(
+    PstNbtLeaf *leaf,
+    PstPcBthRecord *rec,
+    uint16_t cb,
+    uint8_t *data,
+    void *ctx
+){
+    (void)leaf;
+    (void)ctx;
+
+    switch (rec->wPropId) {
+
+        case 0x3704:
+        case 0x3707:
+            printf("\n[FILENAME PROP %04X]\n", rec->wPropId);
+            //print_hex_dump(data, cb);
+			print_utf16le(data, cb);
+            break;
+
+        case 0x3701: {
+    printf("\n[ATTACHMENT DATA %u bytes]\n", cb);
+
+    /* 1) save binary */
+    char filename_bin[256];
+    snprintf(filename_bin, sizeof(filename_bin),
+             "attach_%08x.bin", rec->dwValueHnid);
+
+    FILE *fb = fopen(filename_bin, "wb");
+    if (fb) {
+        fwrite(data, 1, cb, fb);
+        fclose(fb);
+        printf("Saved binary: %s\n", filename_bin);
+    } else {
+        perror("fopen bin");
+    }
+
+    /* 2) save HEX DUMP into file */
+    char filename_hex[256];
+    snprintf(filename_hex, sizeof(filename_hex),
+             "attach_%08x.hex.txt", rec->dwValueHnid);
+
+    FILE *fh = fopen(filename_hex, "w");
+    if (fh) {
+        for (size_t i = 0; i < cb; i += 16) {
+
+            fprintf(fh, "%08zx  ", i);
+
+            for (size_t j = 0; j < 16; j++) {
+                if (i + j < cb)
+                    fprintf(fh, "%02x ", data[i + j]);
+                else
+                    fprintf(fh, "   ");
+
+                if (j == 7) fprintf(fh, " ");
+            }
+
+            fprintf(fh, " |");
+
+            for (size_t j = 0; j < 16 && i + j < cb; j++) {
+                unsigned char c = data[i + j];
+                fprintf(fh, "%c", (c >= 32 && c <= 126) ? c : '.');
+            }
+
+            fprintf(fh, "|\n");
+        }
+
+        fclose(fh);
+        printf("Saved hex dump: %s\n", filename_hex);
+    }
+
+    /* 3) debug */
+    if (cb >= 4) {
+        printf("MAGIC: %02X %02X %02X %02X\n",
+               data[0], data[1], data[2], data[3]);
+    }
+
+    break;
+}
+
+        default:
+            break;
+    }
+}
+
+void pst_extract_attachment(
+    uint64_t bidData,
+    uint64_t bidSub,
+    PstHeader *hdr,
+    FILE *fp
+){
+    PstNbtLeaf leaf;
+
+    leaf.bidData = bidData;
+    leaf.bidSub  = bidSub;
+    leaf.nid     = 0; // non useful for PC parsing
+
+    pst_handle_nbt_leaf(
+        &leaf,
+        hdr,
+        fp,
+        pst_attachment_dump_cb,
+        NULL
+    );
+}
+
 void pst_handle_external_prop(PstNbtLeaf *leaf, PstPcBthRecord *rec, PstHeader *hdr, FILE *fp, PstDataHandler cb, void *ctx) {
     PstBbtLeaf sub = pst_find_node_bbt(hdr->root.bbt_ib, leaf->bidSub, fp);
     if (sub.ib == 0)
@@ -428,7 +537,12 @@ void pst_handle_external_prop(PstNbtLeaf *leaf, PstPcBthRecord *rec, PstHeader *
             PstSlEntry e;
             pst_parse_sl_entry(&e, fp);
 			
-			
+			if(ctx != NULL && *((int*)ctx) == 1){
+				if((e.nid & 0x1F) == 0x05){
+					pst_extract_attachment(e.bidData, e.bidSub, hdr, fp);
+					continue;
+				}
+			}
 			
             long pos = pst_tell(fp);
 
@@ -663,5 +777,22 @@ void pst_stdout_email_folder(const char *filePath, uint64_t nid){
 	PstNbtLeaf pstNbtLeaf = pst_find_node_nbt(pstHeader.root.nbt_ib, nid, fp);
 	PstNbtLeaf pstParentLeaf = pst_find_node_nbt(pstHeader.root.nbt_ib, pstNbtLeaf.nidParent, fp);
 	pst_handle_nbt_leaf(&pstParentLeaf, &pstHeader, fp, &pst_print_email_header_handler, NULL);
+	fclose(fp);
+}
+
+void pst_extracxt_email_attachments(const char *filePath, uint64_t nid){
+	FILE *fp = fopen(filePath, "rb");
+		
+	PstHeader pstHeader;
+	pst_parse_header(&pstHeader, fp);
+	pst_parse_root(&pstHeader.root, fp);
+	
+	//Find email nid
+	PstNbtLeaf pstNbtLeaf = pst_find_node_nbt(pstHeader.root.nbt_ib, nid, fp);
+
+	//Get Mail Body
+	int hasAtt = 1;
+	pst_handle_nbt_leaf(&pstNbtLeaf, &pstHeader, fp, &pst_print_email_body_handler, &hasAtt);
+	
 	fclose(fp);
 }

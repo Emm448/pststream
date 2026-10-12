@@ -277,6 +277,11 @@ void pst_print_property(uint16_t propType, uint8_t *buffer, size_t size){
 		case PT_TIMESTAMP:
 			print_filetime(buffer, size);
 			printf("\n");
-			break;		
+			break;
+		
+		case PT_LONG:
+			uint32_t val = *(uint32_t*)buffer;
+			printf("%u\n", val);
+			break;
     }
 }

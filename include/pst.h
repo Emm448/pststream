@@ -1,10 +1,11 @@
 #ifndef PST_H
 #define PST_H
-
+#include <stdio.h>
 #include <stdint.h>
 
 #define PST_MAGIC 					0x4e444221
 
+#define PR_IMPORTANCE				0x0017
 #define PR_MESSAGE_CLASS        	0x001A
 #define PR_SUBJECT              	0x0037
 #define PR_CLIENT_SUBMIT_TIME		0x0039
@@ -26,7 +27,7 @@
 	#define MSGFLAG_RESEND			0x0080
 	#define MSGFLAG_RN_PENDING		0x0400
 	#define MSGFLAG_NRN_PENDING		0x0800
-	
+
 #define PR_HASATTACH            	0x0E1B
 #define PR_ATTACH_SIZE          	0x0E20
 #define PR_ENTRYID              	0x0FFF
@@ -171,6 +172,22 @@ void pst_stdout_stream_emails_full_info(const char *filePath);
 void pst_stdout_email_folder(const char *filePath, uint64_t nid);
 void pst_stdout_stream_email_body(const char *filePath, uint64_t nid);
 void pst_stdout_stream_email_full_info(const char *filePath, uint64_t nid);
+void pst_extracxt_email_attachments(const char *filePath, uint64_t nid);
 
+void pst_handle_nbt_leaf(PstNbtLeaf *leaf, PstHeader *hdr, FILE *fp, PstDataHandler cb, void *ctx);
+void pst_attachment_dump_cb(
+    PstNbtLeaf *leaf,
+    PstPcBthRecord *rec,
+    uint16_t cb,
+    uint8_t *data,
+    void *ctx
+);
+
+void pst_extract_attachment(
+    uint64_t bidData,
+    uint64_t bidSub,
+    PstHeader *hdr,
+    FILE *fp
+);
 #endif
 
